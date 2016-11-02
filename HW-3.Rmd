@@ -1,6 +1,6 @@
 ---
 title: "MATH 216 Homework 3"
-author: "WRITE YOUR NAME HERE"
+author: "James Burke"
 output:
   html_document:
     toc: true
@@ -15,6 +15,8 @@ library(dplyr)
 library(readr)
 library(lubridate)
 library(Quandl)
+library(forcats)
+library(knitr)
 ```
 
 
@@ -24,10 +26,10 @@ library(Quandl)
 Please indicate
 
 * Who you collaborated with:
-* Roughly how much time you spent on this HW so far:
-* The URL of the RPubs published URL [here](https://www.nhl.com/).
-* What gave you the most trouble:
-* Any comments you have:
+* Roughly how much time you spent on this HW so far: 7 hours
+* The URL of the RPubs published URL [here](http://rpubs.com/jamesburke4/HW-3).
+* What gave you the most trouble: 
+* Any comments you have: Problem occurs when training doesn't include a factor but test does. For instance, I received an error when using test data with model because there was no one in the training dataset that reported income of 500,000.
 
 
 
@@ -79,9 +81,52 @@ prediction of sex for all 56,946 test users, then we use the `is_female` outcome
 to rate how well we performed.
 * Be sure to incorporate all the insight your garnered in your EDA in HW-2.
 
-```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
-set.seed(76)
+```{r, echo=FALSE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+set.seed(81)
 
+#### Cleaning profiles data ####
+
+# Recoding missing observations in job and body type in order to estimate models
+profiles$job[is.na(profiles$job)] <- "missing"
+profiles$body_type[is.na(profiles$body_type)] <- "missing"
+
+# Making values into facotrs and recoding the job variable
+q1_profiles <- profiles %>%
+  mutate(
+    body_type = as.factor(body_type),
+    income = as.factor(income),
+    job = as.factor(job),
+    # Recoding certain job categories:
+    job = fct_recode(job, 
+                    "not working / undisclosed" = "unemployed",
+                    "not working / undisclosed" = "student",
+                    "not working / undisclosed" = "retired",
+                    "not working / undisclosed" = "rather not say",
+                    "entertainment" = "entertainment / media",
+                    "entertainment" = "artistic / musical / writer",
+                    "miscellaneous" = "military",
+                    "miscellaneous" = "political / government",
+                    "miscellaneous" = "clerical / administrative",
+                    "miscellaneous" = "law / legal services",
+                    "miscellaneous" = "construction / craftsmanship",
+                    "miscellaneous" = "transportation",
+                    "miscellaneous" = "hospitality / travel"
+                ),
+    orientation = as.factor(orientation),
+    sex = as.factor(sex),
+    # for visual purposes in charts
+    sex = fct_recode(sex, 
+                    "Male" = "m",
+                    "Female" = "f"
+                )
+  )
+
+# Creating training and test
+training <- q1_profiles[sample(1:nrow(q1_profiles), 2997, replace=FALSE),] %>% 
+  select(id, age, body_type, height, income, job, orientation, sex, is_female)
+
+test <- anti_join(q1_profiles, training, by = "id") %>% 
+  select(id, age, body_type, height, income, job, orientation, sex, is_female)
 ```
 
 
@@ -92,22 +137,48 @@ Train the logistic regression model to predict sex. i.e. fit a logistic
 regression model to the `training` data. Assign this model to an R object called
 `predict_sex_model`, then rate how well the model performs on the `training` data.
 
-```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+Proportion of predictions that are correct for the `training` data:
+```{r, echo=FALSE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
 
+# Fitting logistic regression model using training:
+predict_sex_model <- glm(is_female ~ income + job + orientation + body_type, 
+                         data = training, family = "binomial")
+
+# How well does the model perform on training?
+training <- training %>% 
+  mutate(p_hat1 = fitted(predict_sex_model))
+
+training <- training %>% 
+  mutate(predict_female = if_else(p_hat1 > 0.5, 1, 0)) %>% 
+  mutate(predict_correct = ifelse(predict_female == is_female, 1, 0))
+
+# The proportion of predictions that are correct
+round(mean(training$predict_correct), 5)
 ```
 
 
 
 #### c)
 
-Take `predict_sex_model` and apply it to the `test` data and make a prediction 
+Take `predict_sex_model` and apply it to the `test` data and make a prediction
 for each users' sex, then rate how well the model performs on the `test` data.
 
 **Hint**: What do you think `predict(predict_sex_model, newdata=test,
 type="response")` does? The help file is located in `?predict.glm`
 
-```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+Proportion of predictions that are correct for the `test` data:
+```{r, echo=FALSE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+test <- test %>%
+  mutate(
+    p_hat2 = predict(predict_sex_model, newdata=test, type="response")
+  )
 
+test <- test %>%
+  mutate(predict_female = if_else(p_hat2 > 0.5, 1, 0)) %>%
+  mutate(predict_correct = ifelse(predict_female == is_female, 1, 0))
+
+# The proportion of predictions that are correct
+round(mean(test$predict_correct), 5)
 ```
 
 
@@ -117,28 +188,72 @@ type="response")` does? The help file is located in `?predict.glm`
 Did the model perform better on the `training` data or the `test` data? Why
 do you think that is?
 
-
-
+The model performed better on the `training` data. This is a result of estimating the `predict_sex_model` model on the `training` data initally. Since the model is framed in terms of the qualities and tendencies of the `training` data, the model will be better fit on that data than almost every other dataset, regardless of the number of observations. Even though the `test` data and `training` data come are both randomized subsets of the same dataset, they will not show the exact same tendencies across all of the variables.
 
 
 
 
 ## Question 2:
 
-We want to compare the volatility of 
+We want to compare the volatility of
 
 * [Bitcoin](https://www.quandl.com/data/BAVERAGE/USD) prices
 * [Gold](https://www.quandl.com/data/BUNDESBANK/BBK01_WT5511) prices
 
-Let our measure of volatility be the relative change from day-to-day in price. 
+Let our measure of volatility be the relative change from day-to-day in price.
 Let the reference currency be US dollars. Analyze these results and provide
 insight to a foreign currency exchanger.
 
-```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+```{r, echo=FALSE, message=TRUE, warning=FALSE, fig.width=8, fig.height=4.5}
+Quandl.api_key("Hn9shsF1xNMwcwfmxcTK")
 
+# Bitcoin
+bitcoin <- Quandl("BAVERAGE/USD") %>%
+  tbl_df() %>%
+  rename(Price = `24h Average`) %>%
+  select(Date, Price)
+
+# Gold
+gold <- Quandl("BUNDESBANK/BBK01_WT5511") %>%
+  tbl_df() %>%
+  rename(Price = Value)
+
+# Defining common date range between gold and bitcoin data
+begin <- ymd("2010-07-17")
+end <- ymd("2016-04-18")
+common_range <- interval(begin, end)
+
+bitcoin <- bitcoin %>%
+  filter(Date %within% common_range) %>%
+  arrange(Date) %>%
+  mutate(Percent_Change = Price / lag(Price, 1) - 1)   # calc percentage change
+gold <- gold %>%
+  filter(Date %within% common_range) %>%
+  mutate(Percent_Change = Price / lag(Price, 1) - 1)   # calc percentage change
+
+#### Plots ####
+
+# Average Price
+ggplot(bitcoin, aes(x = Date, y = Price)) +
+  geom_line(color = "dark blue") +                # Line for Bitcoin
+  geom_line(data = gold, color = "dark red") +    # Line for Gold
+  ylim(0, 1900) +
+  geom_text(data = bitcoin[bitcoin$Date == end,],
+            aes(label = "Bitcoin"), hjust = 0.7, vjust = -2)  +
+  geom_text(data = bitcoin[bitcoin$Date == end,],
+            aes(label = "Gold"), hjust = 0.7, vjust = -14) +
+  labs(y = "Price (USD)", title = "Volatility in Bitcoin & Gold Relative to the US Dollar")
+
+# Percentage Change
+ggplot(bitcoin, aes(x = Date, y = Percent_Change)) +
+  geom_bar(stat = "identity", color = "dark blue") +               # For bitcoin
+  geom_bar(data = gold, stat = "identity", color = "dark red") +   # For gold
+  ylim(-0.4, 0.4) +
+  labs(y = "% Change in Day-to-Day Price (USD)",
+       title = "Volatility in Bitcoin & Gold Relative to the US Dollar")
 ```
 
-
+If I were advising a foreign currency exchanger, I would use the previous graph to explain that the price of gold is much less volatile than the price of bitcoin in terms of day-to-day percentage changes in price. The stability of gold makes it a much safer and more reliable target for foreign exchangers compared to the more unpredictable bitcoin.
 
 
 
@@ -176,11 +291,25 @@ the "graveyard shift" during the academic year? Define
 * the "graveyard shift" as midnight to 8am
 * the academic year as September through May (inclusive)
 
-```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+```{r, echo=FALSE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
 
+top10_jukebox <- jukebox %>%
+  # Cleaning the date variable
+  mutate(clean_date = parse_date_time(date_time, "a b d HMS Y")) %>%
+  select(artist, clean_date) %>%
+
+  # Filtering out months not in the academic year
+  filter(month(clean_date) >= 9 | month(clean_date) <= 5) %>%
+
+  # Filtering out times not in the graveyard shift
+  filter(hour(clean_date) < 8 |
+         hour(clean_date) == 8 & minute(clean_date) == 0 & second(clean_date) == 0) %>%
+
+  # Group by artist and count
+  group_by(artist) %>%
+  count() %>%
+  arrange(desc(n))
+
+# Generating Top 10 Table:
+head(top10_jukebox, 10) %>% kable()
 ```
-
-
-
-
-
