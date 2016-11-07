@@ -95,6 +95,13 @@ q1_profiles <- profiles %>%
   mutate(
     body_type = as.factor(body_type),
     income = as.factor(income),
+    # recoding income to avoid the problem of observations appearing in training
+    #  dataset but not in the test dataset
+    income = fct_recode(income, 
+                    "250000+" = "250000",
+                    "250000+" = "500000",
+                    "250000+" = "1000000"
+             ),
     job = as.factor(job),
     # Recoding certain job categories:
     job = fct_recode(job, 
@@ -111,7 +118,7 @@ q1_profiles <- profiles %>%
                     "miscellaneous" = "construction / craftsmanship",
                     "miscellaneous" = "transportation",
                     "miscellaneous" = "hospitality / travel"
-                ),
+          ),
     orientation = as.factor(orientation),
     sex = as.factor(sex),
     # for visual purposes in charts
@@ -122,11 +129,11 @@ q1_profiles <- profiles %>%
   )
 
 # Creating training and test
-training <- q1_profiles[sample(1:nrow(q1_profiles), 2997, replace=FALSE),] %>% 
-  select(id, age, body_type, height, income, job, orientation, sex, is_female)
+training <- sample_n(q1_profiles, 2997, replace=FALSE) %>% 
+  select(id, age, body_type, income, job, orientation, sex, is_female)
 
 test <- anti_join(q1_profiles, training, by = "id") %>% 
-  select(id, age, body_type, height, income, job, orientation, sex, is_female)
+  select(id, age, body_type, income, job, orientation, sex, is_female)
 ```
 
 
@@ -226,29 +233,34 @@ common_range <- interval(begin, end)
 bitcoin <- bitcoin %>%
   filter(Date %within% common_range) %>%
   arrange(Date) %>%
-  mutate(Percent_Change = Price / lag(Price, 1) - 1)   # calc percentage change
+  mutate(
+    Percent_Change = (Price / lag(Price, 1) - 1)*100, # calc percentage change
+    Type = "Bitcoin"
+  ) 
 gold <- gold %>%
   filter(Date %within% common_range) %>%
-  mutate(Percent_Change = Price / lag(Price, 1) - 1)   # calc percentage change
+  arrange(Date) %>%
+  mutate(
+    Percent_Change = (Price / lag(Price, 1) - 1)*100, # calc percentage change
+    Type = "Gold"
+  ) 
+
+chart_data <- bind_rows(bitcoin, gold)
 
 #### Plots ####
 
 # Average Price
-ggplot(bitcoin, aes(x = Date, y = Price)) +
-  geom_line(color = "dark blue") +                # Line for Bitcoin
-  geom_line(data = gold, color = "dark red") +    # Line for Gold
+ggplot(chart_data, aes(x = Date, y = Price, color = Type)) +
+  geom_line() +
+  scale_color_manual(values=c("dark blue", "dark red")) +
   ylim(0, 1900) +
-  geom_text(data = bitcoin[bitcoin$Date == end,],
-            aes(label = "Bitcoin"), hjust = 0.7, vjust = -2)  +
-  geom_text(data = bitcoin[bitcoin$Date == end,],
-            aes(label = "Gold"), hjust = 0.7, vjust = -14) +
   labs(y = "Price (USD)", title = "Volatility in Bitcoin & Gold Relative to the US Dollar")
 
 # Percentage Change
-ggplot(bitcoin, aes(x = Date, y = Percent_Change)) +
-  geom_bar(stat = "identity", color = "dark blue") +               # For bitcoin
-  geom_bar(data = gold, stat = "identity", color = "dark red") +   # For gold
-  ylim(-0.4, 0.4) +
+ggplot(data = NULL, aes(x = Date, y = Percent_Change)) +
+  geom_bar(data = bitcoin, stat = "identity", color = "dark blue") +  # For bitcoin
+  geom_bar(data = gold, stat = "identity", color = "dark red") +      # For gold
+  ylim(-50, 50) +
   labs(y = "% Change in Day-to-Day Price (USD)",
        title = "Volatility in Bitcoin & Gold Relative to the US Dollar")
 ```
