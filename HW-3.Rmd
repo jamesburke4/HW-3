@@ -218,34 +218,29 @@ Quandl.api_key("Hn9shsF1xNMwcwfmxcTK")
 bitcoin <- Quandl("BAVERAGE/USD") %>%
   tbl_df() %>%
   rename(Price = `24h Average`) %>%
-  select(Date, Price)
+  select(Date, Price) %>% 
+  mutate(Type = "bitcoin")
 
 # Gold
 gold <- Quandl("BUNDESBANK/BBK01_WT5511") %>%
   tbl_df() %>%
-  rename(Price = Value)
+  rename(Price = Value) %>% 
+  mutate(Type = "gold")
 
 # Defining common date range between gold and bitcoin data
 begin <- ymd("2010-07-17")
 end <- ymd("2016-04-18")
 common_range <- interval(begin, end)
 
-bitcoin <- bitcoin %>%
+# Binding Data for Charts
+chart_data <- bind_rows(bitcoin, gold) %>% 
+  group_by(Type) %>%
   filter(Date %within% common_range) %>%
-  arrange(Date) %>%
+  arrange(Type, Date) %>%
   mutate(
-    Percent_Change = (Price / lag(Price, 1) - 1)*100, # calc percentage change
-    Type = "Bitcoin"
+    Percent_Change = (Price / lag(Price, 1) - 1)*100 # calc percentage change
   ) 
-gold <- gold %>%
-  filter(Date %within% common_range) %>%
-  arrange(Date) %>%
-  mutate(
-    Percent_Change = (Price / lag(Price, 1) - 1)*100, # calc percentage change
-    Type = "Gold"
-  ) 
-
-chart_data <- bind_rows(bitcoin, gold)
+  
 
 #### Plots ####
 
@@ -257,10 +252,10 @@ ggplot(chart_data, aes(x = Date, y = Price, color = Type)) +
   labs(y = "Price (USD)", title = "Volatility in Bitcoin & Gold Relative to the US Dollar")
 
 # Percentage Change
-ggplot(data = NULL, aes(x = Date, y = Percent_Change)) +
-  geom_bar(data = bitcoin, stat = "identity", color = "dark blue") +  # For bitcoin
-  geom_bar(data = gold, stat = "identity", color = "dark red") +      # For gold
-  ylim(-50, 50) +
+ggplot(data = chart_data, aes(x = Date, y = Percent_Change, color = Type)) +
+  geom_line(stat = "identity") +
+  scale_color_manual(values=c("dark blue", "dark red")) +
+  ylim(-40, 50) +
   labs(y = "% Change in Day-to-Day Price (USD)",
        title = "Volatility in Bitcoin & Gold Relative to the US Dollar")
 ```
